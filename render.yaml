@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: inspectapp-vision
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 60 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: API_SECRET
+        generateValue: true        # Render auto-generates — copy this to your PHP config
+      - key: ALLOWED_ORIGINS
+        value: https://website-6e47ca90.uaconsultants.org
