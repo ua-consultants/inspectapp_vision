@@ -19,14 +19,17 @@ import os
 import io
 import base64
 import logging
+from PIL import Image, ImageFile
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from PIL import Image
 import imagehash
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
 from skimage.color import rgb2gray
 from skimage.transform import resize
+
+# Allow loading truncated images (common with mobile camera uploads)
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # ── Config ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -48,12 +51,30 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def decode_image(b64_string: str) -> Image.Image:
     """Decode a base64 image string (with or without data URI prefix)."""
+    # Strip data URI prefix if present
     if "," in b64_string:
         b64_string = b64_string.split(",", 1)[1]
-    raw = base64.b64decode(b64_string)
+
+    # Clean up any whitespace/newlines that may have crept in
+    b64_string = b64_string.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+
+    try:
+        raw = base64.b64decode(b64_string)
+    except Exception as e:
+        raise ValueError(f"Base64 decode failed: {e}")
+
     if len(raw) > MAX_IMAGE_BYTES:
         raise ValueError("Image too large (max 10 MB)")
-    return Image.open(io.BytesIO(raw)).convert("RGB")
+
+    buf = io.BytesIO(raw)
+    buf.seek(0)
+
+    try:
+        img = Image.open(buf)
+        img.load()          # force full decode now, catches truncated files early
+        return img.convert("RGB")
+    except Exception as e:
+        raise ValueError(f"Image open failed: {e}")
 
 
 def image_to_array(img: Image.Image, size=(256, 256)) -> np.ndarray:
